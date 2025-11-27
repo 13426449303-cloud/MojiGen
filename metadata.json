@@ -1,0 +1,5 @@
+{
+  "name": "MojiGen - AI Sticker Maker",
+  "description": "Upload a photo and generate a complete set of animated emoji stickers with different emotions using Google Veo.",
+  "requestFramePermissions": []
+}
