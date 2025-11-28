@@ -11,44 +11,52 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onKeySelected }) => {
   const handleSelectKey = async () => {
     const aiStudio = (window as any).aistudio;
     if (!aiStudio) {
-        alert("Google GenAI SDK environment not detected.");
+        alert("未检测到 Google GenAI SDK 环境。");
         return;
     }
     setLoading(true);
     try {
         await aiStudio.openSelectKey();
-        // Assume success if no error thrown, as per race condition instruction
+        // Assume success if no error thrown
         onKeySelected();
     } catch (e) {
         console.error(e);
-        // Reset state on failure
         setLoading(false);
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 text-center">
+      <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 text-center animate-bounce-in">
         <div className="w-16 h-16 bg-gradient-to-tr from-pink-400 to-purple-500 rounded-2xl mx-auto mb-6 flex items-center justify-center text-white text-3xl shadow-lg shadow-pink-500/30">
           🔑
         </div>
-        <h2 className="text-2xl font-bold text-slate-800 mb-2">API Key Required</h2>
+        <h2 className="text-2xl font-bold text-slate-800 mb-2">需要 API 密钥</h2>
         <p className="text-slate-600 mb-6 text-sm leading-relaxed">
-          To generate high-quality videos with Google Veo, you need to select a paid API key from a Google Cloud Project with billing enabled.
+          要使用 Google Veo 生成高质量的动态视频表情包，您需要连接一个已启用计费的 Google Cloud 项目的 API 密钥。
         </p>
         
-        <Button onClick={handleSelectKey} className="w-full mb-4" isLoading={loading}>
-          Select API Key
+        <Button onClick={handleSelectKey} className="w-full mb-3" isLoading={loading}>
+          选择 API 密钥 (推荐)
         </Button>
 
-        <a 
-          href="https://ai.google.dev/gemini-api/docs/billing" 
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="text-xs text-pink-500 hover:text-pink-600 hover:underline font-medium"
+        <button 
+          onClick={onKeySelected}
+          className="w-full py-3 text-sm font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-2xl transition-colors"
         >
-          Learn more about billing & requirements
-        </a>
+          暂不配置，使用基础版 (仅本地生成)
+        </button>
+
+        <div className="mt-4 pt-4 border-t border-slate-100">
+            <a 
+            href="https://ai.google.dev/gemini-api/docs/billing" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-xs text-pink-500 hover:text-pink-600 hover:underline font-medium"
+            >
+            了解关于计费和要求的更多信息
+            </a>
+        </div>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import { EmotionConfig, EmotionType } from './types';
+import { EmotionConfig, EmotionType, StyleConfig } from './types';
 
 export const EMOTIONS: EmotionConfig[] = [
   { 
@@ -72,6 +72,39 @@ export const EMOTIONS: EmotionConfig[] = [
     label: '搞钱 (Rich)', 
     emoji: '🤑', 
     promptSuffix: 'dollar signs in eyes, holding stacks of money, golden sparkles, wealthy expression, excited face' 
+  },
+];
+
+export const STYLES: StyleConfig[] = [
+  { 
+    id: '3d', 
+    label: '🌈 3D可亲', 
+    prompt: 'vibrant colors, 3d render style, cute cartoon style, bright lighting, soft shadows, clay material, pixar style' 
+  },
+  { 
+    id: 'manga', 
+    label: '✒️ 黑白漫画', 
+    prompt: 'black and white line art style, manga style, high contrast, monochrome, ink drawing, japanese manga' 
+  },
+  { 
+    id: 'anime', 
+    label: '🌸 日系动漫', 
+    prompt: 'anime style, cel shaded, vibrant colors, japanese animation style, highly detailed, shojo anime' 
+  },
+  { 
+    id: 'pixel', 
+    label: '👾 像素风', 
+    prompt: 'pixel art style, 8-bit, retro game style, blocky, low resolution aesthetic, arcade style' 
+  },
+  { 
+    id: 'clay', 
+    label: '🧱 粘土风', 
+    prompt: 'stop motion claymation style, plasticine texture, handmade look, soft lighting, aardman style' 
+  },
+  { 
+    id: 'watercolor', 
+    label: '🎨 水彩画', 
+    prompt: 'watercolor painting style, soft edges, artistic, pastel colors, paper texture, dreamy' 
   },
 ];
 

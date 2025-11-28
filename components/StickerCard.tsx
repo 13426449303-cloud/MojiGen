@@ -57,6 +57,11 @@ export const StickerCard: React.FC<StickerCardProps> = ({ emotion, state, onGene
                 className="w-full h-full object-cover"
               />
             )}
+            
+            {/* Type Indicator */}
+            <div className="absolute top-2 right-2 px-1.5 py-0.5 bg-black/30 backdrop-blur-md rounded-md text-[10px] text-white font-medium">
+                {mediaType === 'video' ? '动图' : '图片'}
+            </div>
           </>
         )}
 

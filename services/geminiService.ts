@@ -1,14 +1,18 @@
 import { GoogleGenAI } from "@google/genai";
+import { EmotionType } from "../types";
 
 interface GenerateStickerParams {
   imageBase64: string;
   promptSuffix: string;
-  isGrayscale: boolean;
+  stylePrompt: string;
+  emotionId: EmotionType;
+  emoji: string;
 }
 
 interface GenerateStickerResult {
   url: string;
   type: 'video' | 'image';
+  source: 'veo' | 'gemini' | 'canvas';
 }
 
 // Helper to remove data URL prefix
@@ -18,24 +22,27 @@ const cleanBase64 = (dataUrl: string) => {
 
 // Helper to get mime type
 const getMimeType = (dataUrl: string) => {
-  return dataUrl.substring(dataUrl.indexOf(':') + 1, dataUrl.indexOf(';'));
+  return dataUrl.substring(dataUrl.indexOf(':') + 1, dataUrl.indexOf(';')) || 'image/png';
 };
 
-export const generateSticker = async ({
-  imageBase64,
-  promptSuffix,
-  isGrayscale
-}: GenerateStickerParams): Promise<GenerateStickerResult> => {
+export const generateSticker = async (params: GenerateStickerParams): Promise<GenerateStickerResult> => {
+  const { imageBase64, promptSuffix, stylePrompt, emotionId, emoji } = params;
   
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = process.env.API_KEY;
   const imageBytes = cleanBase64(imageBase64);
   const mimeType = getMimeType(imageBase64);
 
-  const stylePrompt = isGrayscale 
-    ? "black and white line art style, manga style, high contrast, monochrome, ink drawing" 
-    : "vibrant colors, 3d render style, cute cartoon style, bright lighting, soft shadows";
+  // If no API key is present, go straight to canvas fallback
+  if (!apiKey) {
+    console.warn("No API Key found, using canvas fallback.");
+    // We treat "manga" style or similar keywords as a trigger for grayscale in canvas
+    const isGrayscale = stylePrompt.includes('black and white') || stylePrompt.includes('monochrome');
+    return await generateCanvasSticker(imageBase64, emotionId, emoji, isGrayscale);
+  }
 
-  // Try Video Generation (Veo) first
+  const ai = new GoogleGenAI({ apiKey });
+
+  // Tier 1: Try Video Generation (Veo)
   try {
     const fullPrompt = `A cute animated sticker of this character. The character is ${promptSuffix}. ${stylePrompt}. Solid white background. Seamless loopable animation. High quality, expressive.`;
 
@@ -54,10 +61,11 @@ export const generateSticker = async ({
     });
 
     // Poll for completion
-    while (!operation.done) {
+    let attempts = 0;
+    while (!operation.done && attempts < 30) { // Timeout after ~90s
       await new Promise(resolve => setTimeout(resolve, 3000));
       operation = await ai.operations.getVideosOperation({ operation: operation });
-      console.log('Generating video sticker...', operation.metadata);
+      attempts++;
     }
 
     if (operation.error) {
@@ -70,7 +78,7 @@ export const generateSticker = async ({
       throw new Error("No video output returned");
     }
 
-    const videoResponse = await fetch(`${videoUri}&key=${process.env.API_KEY}`);
+    const videoResponse = await fetch(`${videoUri}&key=${apiKey}`);
     
     if (!videoResponse.ok) {
         throw new Error(`Failed to download video: ${videoResponse.statusText}`);
@@ -79,24 +87,33 @@ export const generateSticker = async ({
     const videoBlob = await videoResponse.blob();
     return {
       url: URL.createObjectURL(videoBlob),
-      type: 'video'
+      type: 'video',
+      source: 'veo'
     };
 
-  } catch (error: any) {
-    console.warn("Veo generation failed, falling back to static image generation.", error);
+  } catch (veoError: any) {
+    console.warn("Veo generation failed, falling back to static image generation.", veoError);
     
-    // Check if error is related to model availability (404) or permission
-    const errorMessage = error.toString();
-    if (errorMessage.includes("404") || errorMessage.includes("NOT_FOUND") || errorMessage.includes("PermissionDenied")) {
-       // Fallback to static image generation
-       return await generateStaticSticker({ ai, imageBytes, mimeType, promptSuffix, stylePrompt });
+    // Tier 2: Try Static Image Generation (Gemini Flash)
+    try {
+        return await generateStaticAISticker({ 
+            ai, 
+            imageBytes, 
+            mimeType, 
+            promptSuffix, 
+            stylePrompt 
+        });
+    } catch (imageError: any) {
+        console.warn("AI Image generation failed, falling back to canvas.", imageError);
+        
+        // Tier 3: Local Canvas Fallback (Guaranteed Success)
+        const isGrayscale = stylePrompt.includes('black and white') || stylePrompt.includes('monochrome');
+        return await generateCanvasSticker(imageBase64, emotionId, emoji, isGrayscale);
     }
-    
-    throw error;
   }
 };
 
-const generateStaticSticker = async ({
+const generateStaticAISticker = async ({
   ai,
   imageBytes,
   mimeType,
@@ -127,10 +144,8 @@ const generateStaticSticker = async ({
     }
   });
 
-  // Extract image from response
   let base64Image: string | undefined;
   
-  // Iterate parts to find image
   const parts = response.candidates?.[0]?.content?.parts;
   if (parts) {
     for (const part of parts) {
@@ -145,7 +160,6 @@ const generateStaticSticker = async ({
     throw new Error("Failed to generate static sticker image");
   }
 
-  // Convert base64 to Blob URL
   const byteCharacters = atob(base64Image);
   const byteNumbers = new Array(byteCharacters.length);
   for (let i = 0; i < byteCharacters.length; i++) {
@@ -156,6 +170,133 @@ const generateStaticSticker = async ({
 
   return {
     url: URL.createObjectURL(blob),
-    type: 'image'
+    type: 'image',
+    source: 'gemini'
   };
+};
+
+const generateCanvasSticker = async (
+  imageBase64: string, 
+  emotionId: EmotionType, 
+  emoji: string,
+  isGrayscale: boolean
+): Promise<GenerateStickerResult> => {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+
+    if (!ctx) {
+      reject(new Error("Canvas not supported"));
+      return;
+    }
+
+    img.onload = () => {
+      // Set canvas size (square)
+      const size = 512;
+      canvas.width = size;
+      canvas.height = size;
+
+      // Fill white background
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, size, size);
+
+      // Draw original image (centered and fit)
+      const scale = Math.min(size / img.width, size / img.height) * 0.8;
+      const x = (size - img.width * scale) / 2;
+      const y = (size - img.height * scale) / 2;
+
+      ctx.save();
+      
+      // Apply Grayscale if needed
+      if (isGrayscale) {
+        ctx.filter = 'grayscale(100%) contrast(120%)';
+      }
+
+      // Apply Emotion transformations
+      applyEmotionTransform(ctx, emotionId, size);
+      
+      ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+      ctx.restore();
+
+      // Draw Emoji Overlay
+      ctx.font = '80px Arial';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'bottom';
+      ctx.shadowColor = "rgba(0,0,0,0.3)";
+      ctx.shadowBlur = 10;
+      ctx.fillText(emoji, size - 20, size - 20);
+
+      canvas.toBlob((blob) => {
+        if (blob) {
+          resolve({
+            url: URL.createObjectURL(blob),
+            type: 'image',
+            source: 'canvas'
+          });
+        } else {
+          reject(new Error("Canvas conversion failed"));
+        }
+      }, 'image/png');
+    };
+
+    img.onerror = () => reject(new Error("Failed to load image for canvas"));
+    img.src = imageBase64;
+  });
+};
+
+const applyEmotionTransform = (ctx: CanvasRenderingContext2D, emotionId: EmotionType, size: number) => {
+    const center = size / 2;
+    ctx.translate(center, center);
+
+    switch (emotionId) {
+        case 'angry':
+            // Shake + Red Tint
+            ctx.rotate((Math.random() - 0.5) * 0.2); 
+            ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
+            ctx.fillRect(-center, -center, size, size);
+            break;
+        case 'cry':
+            // Blue Tint
+            ctx.fillStyle = 'rgba(0, 0, 255, 0.2)';
+            ctx.fillRect(-center, -center, size, size);
+            break;
+        case 'love':
+            // Pink Tint
+            ctx.fillStyle = 'rgba(255, 105, 180, 0.1)';
+            ctx.fillRect(-center, -center, size, size);
+            break;
+        case 'confused':
+            // Tilt
+            ctx.rotate(0.2);
+            break;
+        case 'surprised':
+            // Zoom in
+            ctx.scale(1.2, 1.2);
+            break;
+        case 'sleepy':
+            // Darker
+            ctx.fillStyle = 'rgba(0, 0, 50, 0.3)';
+            ctx.fillRect(-center, -center, size, size);
+            break;
+        case 'cool':
+            // Cool contrast
+            ctx.filter = 'contrast(1.2) saturate(1.2)';
+            break;
+        case 'shy':
+             // Red cheeks tint (simulated)
+             ctx.fillStyle = 'rgba(255, 100, 100, 0.1)';
+             ctx.fillRect(-center, -center, size, size);
+             ctx.scale(0.9, 0.9);
+             break;
+        case 'rich':
+             // Gold tint
+             ctx.fillStyle = 'rgba(255, 215, 0, 0.1)';
+             ctx.fillRect(-center, -center, size, size);
+             break;
+        default:
+            break;
+    }
+    
+    ctx.translate(-center, -center);
 };
