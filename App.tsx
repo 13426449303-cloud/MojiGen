@@ -1,16 +1,16 @@
+
 import React, { useState, useEffect } from 'react';
 import JSZip from 'jszip';
 import { ImageUploader } from './components/ImageUploader';
 import { StickerCard } from './components/StickerCard';
 import { Button } from './components/Button';
 import { ApiKeyModal } from './components/ApiKeyModal';
-import { EMOTIONS, INITIAL_STICKER_STATE, STYLES } from './constants';
+import { EMOTIONS, INITIAL_STICKER_STATE, DEFAULT_STYLE_PROMPT } from './constants';
 import { EmotionType, StickerState } from './types';
 import { generateSticker } from './services/geminiService';
 
 const App: React.FC = () => {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [selectedStyleId, setSelectedStyleId] = useState<string>(STYLES[0].id);
   const [stickerStates, setStickerStates] = useState<Record<EmotionType, StickerState>>(INITIAL_STICKER_STATE);
   const [isGlobalLoading, setIsGlobalLoading] = useState(false);
   const [isZipping, setIsZipping] = useState(false);
@@ -44,7 +44,6 @@ const App: React.FC = () => {
     updateStickerState(emotionId, { status: 'loading', error: undefined });
     
     const emotionConfig = EMOTIONS.find(e => e.id === emotionId);
-    const styleConfig = STYLES.find(s => s.id === selectedStyleId) || STYLES[0];
     
     if (!emotionConfig) return;
 
@@ -52,7 +51,7 @@ const App: React.FC = () => {
       const result = await generateSticker({
         imageBase64: selectedImage,
         promptSuffix: emotionConfig.promptSuffix,
-        stylePrompt: styleConfig.prompt,
+        stylePrompt: DEFAULT_STYLE_PROMPT,
         emotionId: emotionId,
         emoji: emotionConfig.emoji
       });
@@ -64,9 +63,26 @@ const App: React.FC = () => {
       });
     } catch (err: any) {
       console.error("Generation error:", err);
+      
+      const errorMessage = err?.message || JSON.stringify(err);
+      
+      // Check for specific API Key related errors (400, 403, or specific text)
+      if (
+        errorMessage.includes("403") || 
+        errorMessage.includes("400") || 
+        errorMessage.includes("API_KEY_INVALID") || 
+        errorMessage.includes("API key not valid") ||
+        errorMessage.includes("billing")
+      ) {
+        setApiKeySet(false); // Trigger modal to reappear
+        updateStickerState(emotionId, { status: 'idle', error: undefined }); // Reset to idle
+        // Optionally alert the user, though the modal popping up is a strong signal
+        return;
+      }
+
       updateStickerState(emotionId, { 
         status: 'error', 
-        error: "生成服务繁忙，请稍后重试" // "Generation service busy, please try again"
+        error: "生成失败: " + (err.message || "未知错误")
       });
     }
   };
@@ -82,7 +98,15 @@ const App: React.FC = () => {
     const batchSize = 3;
     for (let i = 0; i < stickersToGenerate.length; i += batchSize) {
         const batch = stickersToGenerate.slice(i, i + batchSize);
-        await Promise.allSettled(batch.map(emotion => generateSingleSticker(emotion.id)));
+        // We run these in parallel but we need to stop if API key is invalid
+        const promises = batch.map(emotion => generateSingleSticker(emotion.id));
+        await Promise.all(promises);
+        
+        // If the API key became unset during this batch (due to error handler), stop.
+        if (!apiKeySet) {
+             setIsGlobalLoading(false);
+             return;
+        }
     }
     
     setIsGlobalLoading(false);
@@ -95,7 +119,6 @@ const App: React.FC = () => {
   const handleResetAll = () => {
       setSelectedImage(null);
       setStickerStates(INITIAL_STICKER_STATE);
-      setSelectedStyleId(STYLES[0].id);
   };
 
   const handleDownloadAll = async () => {
@@ -198,9 +221,9 @@ const App: React.FC = () => {
         <section className="mb-10">
             {!selectedImage ? (
                  <div className="text-center mb-8 animate-fade-in">
-                    <h2 className="text-3xl font-bold text-slate-800 mb-3">AI 动态表情包生成器</h2>
+                    <h2 className="text-3xl font-bold text-slate-800 mb-3">AI 表情包生成器</h2>
                     <p className="text-slate-500 max-w-lg mx-auto">
-                        上传一张人物或宠物的照片，选择喜欢的风格，AI 将自动为你生成一套包含12种情绪的专属动态表情包。
+                        上传一张人物或宠物的照片，AI 将自动为你生成一套包含12种情绪的专属3D表情包。
                     </p>
                 </div>
             ) : null}
@@ -209,39 +232,6 @@ const App: React.FC = () => {
                 onImageSelect={handleImageSelect} 
                 currentImage={selectedImage} 
             />
-
-            {/* Style Selector */}
-            {selectedImage && (
-                <div className="max-w-4xl mx-auto mb-10 animate-fade-in-up">
-                    <div className="flex items-center justify-between mb-4 px-2">
-                        <h3 className="font-bold text-slate-700">选择风格</h3>
-                        <button onClick={handleResetStickers} className="text-xs text-pink-500 font-medium hover:underline">
-                            重置生成状态
-                        </button>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
-                        {STYLES.map((style) => (
-                            <button
-                                key={style.id}
-                                onClick={() => setSelectedStyleId(style.id)}
-                                className={`
-                                    relative p-3 rounded-2xl border-2 transition-all duration-200 text-left
-                                    flex flex-col gap-1 overflow-hidden
-                                    ${selectedStyleId === style.id 
-                                        ? 'border-pink-500 bg-pink-50 shadow-md scale-105 z-10' 
-                                        : 'border-slate-100 bg-white hover:border-pink-200 hover:shadow-sm'
-                                    }
-                                `}
-                            >
-                                <span className="text-sm font-bold text-slate-700 z-10">{style.label}</span>
-                                <div className={`absolute bottom-0 right-0 p-2 opacity-10 text-4xl`}>
-                                   🎨
-                                </div>
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
         </section>
 
         {/* Grid Section */}

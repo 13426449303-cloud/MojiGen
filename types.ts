@@ -1,3 +1,4 @@
+
 export type EmotionType = 
   | 'love' 
   | 'angry' 
@@ -19,12 +20,6 @@ export interface EmotionConfig {
   promptSuffix: string;
 }
 
-export interface StyleConfig {
-  id: string;
-  label: string;
-  prompt: string;
-}
-
 export type GenerationStatus = 'idle' | 'loading' | 'success' | 'error';
 
 export interface StickerState {
@@ -36,7 +31,6 @@ export interface StickerState {
 
 export interface AppState {
   selectedImage: string | null; // Base64
-  selectedStyleId: string;
   stickers: Record<EmotionType, StickerState>;
   apiKeySet: boolean;
 }

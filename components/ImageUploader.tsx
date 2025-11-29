@@ -1,3 +1,4 @@
+
 import React, { useCallback, useState } from 'react';
 
 interface ImageUploaderProps {
@@ -39,6 +40,8 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelect, cur
   const onInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       handleFile(e.target.files[0]);
+      // Critical fix: Reset input value so the same file can be selected again if needed
+      e.target.value = '';
     }
   };
 
@@ -63,7 +66,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageSelect, cur
         {currentImage ? (
           <div className="relative w-full h-full">
             <img src={currentImage} alt="Uploaded" className="w-full h-full object-contain p-4" />
-            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                <p className="text-white font-bold bg-white/20 backdrop-blur-md px-4 py-2 rounded-full">更换图片</p>
             </div>
           </div>

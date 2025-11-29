@@ -1,3 +1,4 @@
+
 import { GoogleGenAI } from "@google/genai";
 import { EmotionType } from "../types";
 
@@ -34,8 +35,6 @@ export const generateSticker = async (params: GenerateStickerParams): Promise<Ge
 
   // If no API key is present, go straight to canvas fallback
   if (!apiKey) {
-    console.warn("No API Key found, using canvas fallback.");
-    // We treat "manga" style or similar keywords as a trigger for grayscale in canvas
     const isGrayscale = stylePrompt.includes('black and white') || stylePrompt.includes('monochrome');
     return await generateCanvasSticker(imageBase64, emotionId, emoji, isGrayscale);
   }
@@ -101,7 +100,7 @@ export const generateSticker = async (params: GenerateStickerParams): Promise<Ge
             imageBytes, 
             mimeType, 
             promptSuffix, 
-            stylePrompt 
+            stylePrompt
         });
     } catch (imageError: any) {
         console.warn("AI Image generation failed, falling back to canvas.", imageError);
@@ -160,19 +159,70 @@ const generateStaticAISticker = async ({
     throw new Error("Failed to generate static sticker image");
   }
 
-  const byteCharacters = atob(base64Image);
-  const byteNumbers = new Array(byteCharacters.length);
-  for (let i = 0; i < byteCharacters.length; i++) {
-    byteNumbers[i] = byteCharacters.charCodeAt(i);
-  }
-  const byteArray = new Uint8Array(byteNumbers);
-  const blob = new Blob([byteArray], { type: 'image/png' });
+  // Post-process the AI image to ensure standardized sticker format (white bg, centered)
+  const processedImageUrl = await processStickerImage(`data:image/png;base64,${base64Image}`);
 
   return {
-    url: URL.createObjectURL(blob),
+    url: processedImageUrl,
     type: 'image',
     source: 'gemini'
   };
+};
+
+// Helper function to load an image and center it on a square white canvas
+const processStickerImage = async (imageUrl: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+
+        if (!ctx) {
+            reject(new Error("Canvas not supported"));
+            return;
+        }
+
+        img.onload = () => {
+            const size = 1024; // High resolution
+            canvas.width = size;
+            canvas.height = size;
+
+            // 1. Fill background (Solid White)
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, size, size);
+
+            // 2. Calculate Centered Layout with Padding
+            const padding = size * 0.05; // 5% padding
+            const availableSize = size - (padding * 2);
+
+            // Maintain aspect ratio
+            const imgAspect = img.width / img.height;
+            let drawW = availableSize;
+            let drawH = drawW / imgAspect;
+
+            if (drawH > availableSize) {
+                drawH = availableSize;
+                drawW = drawH * imgAspect;
+            }
+
+            // Center in the canvas
+            const drawX = (size - drawW) / 2;
+            const drawY = (size - drawH) / 2;
+
+            // 3. Draw Image
+            ctx.drawImage(img, 0, 0, img.width, img.height, drawX, drawY, drawW, drawH);
+            
+            canvas.toBlob((blob) => {
+                if (blob) {
+                    resolve(URL.createObjectURL(blob));
+                } else {
+                    reject(new Error("Failed to process image blob"));
+                }
+            }, 'image/png');
+        };
+
+        img.onerror = () => reject(new Error("Failed to load generated image for post-processing"));
+        img.src = imageUrl;
+    });
 };
 
 const generateCanvasSticker = async (
@@ -192,8 +242,8 @@ const generateCanvasSticker = async (
     }
 
     img.onload = () => {
-      // Set canvas size (square)
-      const size = 512;
+      // Set canvas size (square, high res)
+      const size = 1024;
       canvas.width = size;
       canvas.height = size;
 
@@ -201,10 +251,21 @@ const generateCanvasSticker = async (
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, size, size);
 
-      // Draw original image (centered and fit)
-      const scale = Math.min(size / img.width, size / img.height) * 0.8;
-      const x = (size - img.width * scale) / 2;
-      const y = (size - img.height * scale) / 2;
+      // --- Layout Logic ---
+      const padding = size * 0.05;
+      const availableSize = size - (padding * 2);
+
+      const imgAspect = img.width / img.height;
+      let drawW = availableSize;
+      let drawH = drawW / imgAspect;
+
+      if (drawH > availableSize) {
+          drawH = availableSize;
+          drawW = drawH * imgAspect;
+      }
+
+      const drawX = (size - drawW) / 2;
+      const drawY = (size - drawH) / 2;
 
       ctx.save();
       
@@ -214,18 +275,24 @@ const generateCanvasSticker = async (
       }
 
       // Apply Emotion transformations
-      applyEmotionTransform(ctx, emotionId, size);
+      const centerX = drawX + drawW / 2;
+      const centerY = drawY + drawH / 2;
       
-      ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+      ctx.translate(centerX, centerY);
+      applyEmotionTransformToContext(ctx, emotionId, size);
+      ctx.translate(-centerX, -centerY);
+      
+      ctx.drawImage(img, drawX, drawY, drawW, drawH);
       ctx.restore();
 
-      // Draw Emoji Overlay
-      ctx.font = '80px Arial';
+      // Draw Emoji Overlay (Top Right corner)
+      const emojiSize = size * 0.15;
+      ctx.font = `${emojiSize}px Arial`;
       ctx.textAlign = 'right';
-      ctx.textBaseline = 'bottom';
-      ctx.shadowColor = "rgba(0,0,0,0.3)";
+      ctx.textBaseline = 'top';
+      ctx.shadowColor = "rgba(0,0,0,0.2)";
       ctx.shadowBlur = 10;
-      ctx.fillText(emoji, size - 20, size - 20);
+      ctx.fillText(emoji, size - (padding/2), padding/2);
 
       canvas.toBlob((blob) => {
         if (blob) {
@@ -245,58 +312,47 @@ const generateCanvasSticker = async (
   });
 };
 
-const applyEmotionTransform = (ctx: CanvasRenderingContext2D, emotionId: EmotionType, size: number) => {
-    const center = size / 2;
-    ctx.translate(center, center);
-
+const applyEmotionTransformToContext = (ctx: CanvasRenderingContext2D, emotionId: EmotionType, canvasSize: number) => {
+    // Relative to center 0,0
+    const size = canvasSize; 
+    
     switch (emotionId) {
         case 'angry':
-            // Shake + Red Tint
             ctx.rotate((Math.random() - 0.5) * 0.2); 
-            ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
-            ctx.fillRect(-center, -center, size, size);
+            ctx.fillStyle = 'rgba(255, 0, 0, 0.15)';
+            ctx.fillRect(-size/2, -size/2, size, size);
             break;
         case 'cry':
-            // Blue Tint
-            ctx.fillStyle = 'rgba(0, 0, 255, 0.2)';
-            ctx.fillRect(-center, -center, size, size);
+            ctx.fillStyle = 'rgba(0, 100, 255, 0.15)';
+            ctx.fillRect(-size/2, -size/2, size, size);
             break;
         case 'love':
-            // Pink Tint
             ctx.fillStyle = 'rgba(255, 105, 180, 0.1)';
-            ctx.fillRect(-center, -center, size, size);
+            ctx.fillRect(-size/2, -size/2, size, size);
             break;
         case 'confused':
-            // Tilt
-            ctx.rotate(0.2);
+            ctx.rotate(0.15);
             break;
         case 'surprised':
-            // Zoom in
-            ctx.scale(1.2, 1.2);
+            ctx.scale(1.1, 1.1);
             break;
         case 'sleepy':
-            // Darker
-            ctx.fillStyle = 'rgba(0, 0, 50, 0.3)';
-            ctx.fillRect(-center, -center, size, size);
+            ctx.fillStyle = 'rgba(0, 0, 80, 0.2)';
+            ctx.fillRect(-size/2, -size/2, size, size);
             break;
         case 'cool':
-            // Cool contrast
-            ctx.filter = 'contrast(1.2) saturate(1.2)';
+            ctx.filter = 'contrast(1.25) saturate(0.8)';
             break;
         case 'shy':
-             // Red cheeks tint (simulated)
              ctx.fillStyle = 'rgba(255, 100, 100, 0.1)';
-             ctx.fillRect(-center, -center, size, size);
-             ctx.scale(0.9, 0.9);
+             ctx.fillRect(-size/2, -size/2, size, size);
+             ctx.scale(0.95, 0.95);
              break;
         case 'rich':
-             // Gold tint
              ctx.fillStyle = 'rgba(255, 215, 0, 0.1)';
-             ctx.fillRect(-center, -center, size, size);
+             ctx.fillRect(-size/2, -size/2, size, size);
              break;
         default:
             break;
     }
-    
-    ctx.translate(-center, -center);
 };

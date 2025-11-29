@@ -1,4 +1,5 @@
-import { EmotionConfig, EmotionType, StyleConfig } from './types';
+
+import { EmotionConfig, EmotionType } from './types';
 
 export const EMOTIONS: EmotionConfig[] = [
   { 
@@ -29,7 +30,7 @@ export const EMOTIONS: EmotionConfig[] = [
     id: 'surprised', 
     label: '惊讶 (Shock)', 
     emoji: '😱', 
-    promptSuffix: 'jaw dropping to the floor, eyes popping out, shocked expression, cartoon style shock' 
+    promptSuffix: 'extremely shocked expression, eyes wide open, mouth wide open screaming, exaggerated cartoon shock, disbelief' 
   },
   { 
     id: 'confused', 
@@ -75,38 +76,7 @@ export const EMOTIONS: EmotionConfig[] = [
   },
 ];
 
-export const STYLES: StyleConfig[] = [
-  { 
-    id: '3d', 
-    label: '🌈 3D可亲', 
-    prompt: 'vibrant colors, 3d render style, cute cartoon style, bright lighting, soft shadows, clay material, pixar style' 
-  },
-  { 
-    id: 'manga', 
-    label: '✒️ 黑白漫画', 
-    prompt: 'black and white line art style, manga style, high contrast, monochrome, ink drawing, japanese manga' 
-  },
-  { 
-    id: 'anime', 
-    label: '🌸 日系动漫', 
-    prompt: 'anime style, cel shaded, vibrant colors, japanese animation style, highly detailed, shojo anime' 
-  },
-  { 
-    id: 'pixel', 
-    label: '👾 像素风', 
-    prompt: 'pixel art style, 8-bit, retro game style, blocky, low resolution aesthetic, arcade style' 
-  },
-  { 
-    id: 'clay', 
-    label: '🧱 粘土风', 
-    prompt: 'stop motion claymation style, plasticine texture, handmade look, soft lighting, aardman style' 
-  },
-  { 
-    id: 'watercolor', 
-    label: '🎨 水彩画', 
-    prompt: 'watercolor painting style, soft edges, artistic, pastel colors, paper texture, dreamy' 
-  },
-];
+export const DEFAULT_STYLE_PROMPT = 'vibrant colors, 3d render style, cute cartoon style, bright lighting, soft shadows, clay material, pixar style, vector art style';
 
 export const INITIAL_STICKER_STATE = EMOTIONS.reduce((acc, emotion) => {
   acc[emotion.id] = { status: 'idle' };
